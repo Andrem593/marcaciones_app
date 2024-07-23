@@ -19,4 +19,11 @@ Route::middleware([
     Route::get('/dashboard', function () {
         return Inertia::render('Dashboard');
     })->name('dashboard');
+
+    Route::get('/Reporte/detalle/{empleado}/{fecha}', function (Application $app, $empleado, $fecha) {        
+        return Inertia::render('Reports/detalle', [
+            'empleado' => $empleado,
+            'fecha' => $fecha,
+        ]);
+    })->name('reporte.detalle');
 });
