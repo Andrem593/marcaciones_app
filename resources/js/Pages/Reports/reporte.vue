@@ -9,8 +9,13 @@
                 <input v-model="filterEndDate" type="date" placeholder="Fecha de fin"
                     class="border border-gray-300 rounded-lg p-2 ml-2" />
             </div>
-            <button @click="filterData"
-                class="bg-blue-500 text-white rounded-lg px-4 py-2 ml-2 hover:bg-blue-600">Buscar</button>
+            <div>
+                <button @click="filterData"
+                    class="bg-blue-500 text-white rounded-lg px-4 py-2 ml-2 hover:bg-blue-600">Buscar</button>
+                <button @click="exportData"
+                    class="bg-green-500 text-white rounded-lg px-4 py-2 ml-2 hover:bg-green-600">Exportar</button>
+            </div>
+
         </div>
 
         <div class="overflow-x-auto">
@@ -39,9 +44,8 @@
                         <td class="py-3 px-6 text-left">{{ item.salida }}</td>
                         <td class="py-3 px-6 text-left">{{ item.biometrico }}</td>
                         <td class="py-3 px-6 text-left">
-                            <button 
-                            @click="viewDetails(item.empleado_id, item.fecha)"
-                            class="bg-blue-500 text-white rounded-lg px-4 py-2 hover:bg-blue-600">Ver</button>
+                            <button @click="viewDetails(item.empleado_id, item.fecha)"
+                                class="bg-blue-500 text-white rounded-lg px-4 py-2 hover:bg-blue-600">Ver</button>
                         </td>
                     </tr>
                 </tbody>
@@ -87,6 +91,24 @@ export default {
                 this.data = response.data;
             }).catch(error => {
                 console.log(error);
+            });
+        },
+        async exportData() {
+            const params = {
+                empleado: this.searchQuery, // Usamos searchQuery como empleado si corresponde
+                inicio: this.filterStartDate,
+                fin: this.filterEndDate
+            };
+            await axios.get('/api/marcaciones/export', { params }).then(response => {
+                // Descarga el archivo CSV
+                const url = window.URL.createObjectURL(new Blob([response.data]));
+                const link = document.createElement('a');
+                link.href = url;
+                link.setAttribute('download', 'reporte_marcaciones.csv');
+                document.body.appendChild(link);
+                link.click();
+            }).catch(error => {
+                
             });
         },
         viewDetails(empleado_id, fecha) {

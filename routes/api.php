@@ -11,3 +11,5 @@ Route::get('/user', function (Request $request) {
 Route::get('marcaciones', [MarcacionController::class, 'index']);
 
 Route::get('marcaciones/{empleado}/{fecha}', [MarcacionController::class, 'show']);
+
+Route::get('marcaciones/export', [MarcacionController::class, 'export']);
