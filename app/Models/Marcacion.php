@@ -17,6 +17,7 @@ class Marcacion extends Model
         'fecha',
         'hora',
         'empleado',
-        'biometrico'
+        'biometrico',
+	'tipo_contrato'
     ];
 }

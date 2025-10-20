@@ -33,24 +33,9 @@ class MarcacionController extends Controller
         // Ordenar resultados
         $marcaciones = $query->orderBy('empleado_id')->orderBy('hora')->get();
 
-        $marcacionesFiltradas = [];
-        $ultimoEmpleadoId = null;
-        $ultimaHora = null;
-        $intervalo = 1800; // Intervalo en segundos (1 minuto)
-
-        foreach ($marcaciones as $marcacion) {
-            if ($marcacion->empleado_id === $ultimoEmpleadoId && strtotime($marcacion->hora) - strtotime($ultimaHora) < $intervalo) {
-                // Si la marcación es del mismo empleado y está dentro del intervalo, la ignoramos
-                continue;
-            }
-
-            $marcacionesFiltradas[] = $marcacion;
-            $ultimoEmpleadoId = $marcacion->empleado_id;
-            $ultimaHora = $marcacion->hora;
-        }
-
+        // Agrupar por empleado y fecha
         $marcacionesAgrupadas = [];
-        foreach ($marcacionesFiltradas as $marcacion) {
+        foreach ($marcaciones as $marcacion) {
             $empleadoId = $marcacion->empleado_id;
             $fecha = $marcacion->fecha;
             if (!isset($marcacionesAgrupadas[$empleadoId])) {
@@ -65,31 +50,73 @@ class MarcacionController extends Controller
         $resultado = [];
         foreach ($marcacionesAgrupadas as $empleadoId => $marcacionesPorFecha) {
             foreach ($marcacionesPorFecha as $fecha => $marcaciones) {
+                // 1. Eliminar repetidas por intervalo de 1 minuto
+                $filtradas = [];
+                $lastHora = null;
+                foreach ($marcaciones as $m) {
+                    if ($lastHora === null || (strtotime($m->hora) - strtotime($lastHora)) >= 60) {
+                        $filtradas[] = $m;
+                        $lastHora = $m->hora;
+                    }
+                }
+
+                // 2. Clasificación según cantidad y reglas
                 $entradasSalidas = [
                     'empleado_id' => $empleadoId,
-                    'empleado' => $marcaciones[0]->empleado,
-                    'biometrico' => $marcaciones[0]->biometrico,
+                    'empleado' => $filtradas[0]->empleado ?? '',
+                    'biometrico' => $filtradas[0]->biometrico ?? '',
                     'fecha' => $fecha,
                     'entrada' => null,
                     'salida_almuerzo' => null,
                     'entrada_almuerzo' => null,
                     'salida' => null,
+					'tipo_contrato'=>$filtradas[0]->tipo_contrato
                 ];
 
-                $marcacionesDelDia = $marcaciones;
-                if (count($marcacionesDelDia) > 0) {
-                    $entradasSalidas['entrada'] = $marcacionesDelDia[0]->hora;
-                }
-                if (count($marcacionesDelDia) > 1) {
-                    $entradasSalidas['salida_almuerzo'] = $marcacionesDelDia[1]->hora;
-                }
-                if (count($marcacionesDelDia) > 2) {
-                    $entradasSalidas['entrada_almuerzo'] = $marcacionesDelDia[2]->hora;
-                }
-                if (count($marcacionesDelDia) > 3) {
-                    //ultimo index
-                    $key = count($marcacionesDelDia) - 1;
-                    $entradasSalidas['salida'] = $marcacionesDelDia[$key]->hora;
+                $count = count($filtradas);
+                if ($count >= 4) {
+                    // Regla especial para más de 4 marcaciones
+                    $entrada = $filtradas[0]->hora;
+                    $salida_almuerzo = null;
+                    $entrada_almuerzo = null;
+                    $salida = $filtradas[$count-1]->hora;
+
+                    // Buscar salida de almuerzo (entre 10:00 y 14:00)
+                    for ($i=1; $i<$count-1; $i++) {
+                        $h = strtotime($filtradas[$i]->hora);
+                        $h10 = strtotime('10:00:00');
+                        $h14 = strtotime('14:00:00');
+                        if ($h >= $h10 && $h <= $h14) {
+                            $salida_almuerzo = $filtradas[$i]->hora;
+                            // Buscar entrada de almuerzo después de salida, con intervalo >= 5 min
+                            for ($j=$i+1; $j<$count-1; $j++) {
+                                $h2 = strtotime($filtradas[$j]->hora);
+                                if (($h2 - $h) >= 300) {
+                                    $entrada_almuerzo = $filtradas[$j]->hora;
+                                    break;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                    $entradasSalidas['entrada'] = $entrada;
+                    $entradasSalidas['salida_almuerzo'] = $salida_almuerzo;
+                    $entradasSalidas['entrada_almuerzo'] = $entrada_almuerzo;
+                    $entradasSalidas['salida'] = $salida;
+                } elseif ($count === 4) {
+                    $entradasSalidas['entrada'] = $filtradas[0]->hora;
+                    $entradasSalidas['salida_almuerzo'] = $filtradas[1]->hora;
+                    $entradasSalidas['entrada_almuerzo'] = $filtradas[2]->hora;
+                    $entradasSalidas['salida'] = $filtradas[3]->hora;
+                } elseif ($count === 3) {
+                    $entradasSalidas['entrada'] = $filtradas[0]->hora;
+                    $entradasSalidas['salida_almuerzo'] = $filtradas[1]->hora;
+                    $entradasSalidas['salida'] = $filtradas[2]->hora;
+                } elseif ($count === 2) {
+                    $entradasSalidas['entrada'] = $filtradas[0]->hora;
+                    $entradasSalidas['salida'] = $filtradas[1]->hora;
+                } elseif ($count === 1) {
+                    $entradasSalidas['entrada'] = $filtradas[0]->hora;
                 }
 
                 $resultado[] = $entradasSalidas;
@@ -141,7 +168,7 @@ class MarcacionController extends Controller
             "Expires" => "0"
         ];
 
-        $columns = ['CODIGO', 'EMPLEADO', 'FECHA', 'HORA', 'TIPO_MARCACION', 'EMPRESA_REGISTRO', 'HACIENDA_REGISTRO', 'CONTRATO', 'EQUIPO']; // Cambia los nombres de las columnas según tus datos
+        $columns = ['CODIGO', 'EMPLEADO', 'FECHA', 'HORA', 'TIPO_MARCACION', 'CONTRATO', 'EQUIPO']; // Cambia los nombres de las columnas según tus datos
 
         $callback = function () use ($data, $columns) {
             $file = fopen('php://output', 'w');
@@ -151,16 +178,16 @@ class MarcacionController extends Controller
                 // Corregir la codificación del nombre del empleado
                 // $row['empleado'] = mb_convert_encoding($row['empleado'], 'UTF-8', 'ISO-8859-1');
                 if (!empty($row['entrada'])) {
-                    fputcsv($file, [$row['empleado_id'],$row['empleado'], $row['fecha'], $row['entrada'], 'INGRESO', '', '', '', $row['biometrico']]);
+                    fputcsv($file, [$row['empleado_id'],$row['empleado'], $row['fecha'], $row['entrada'], 'INGRESO', $row['tipo_contrato'], $row['biometrico']]);
                 }
                 if (!empty($row['salida_almuerzo'])) {
-                    fputcsv($file, [$row['empleado_id'],$row['empleado'], $row['fecha'], $row['entrada'], 'BREAK-OUT', '', '', '', $row['biometrico']]);
+                    fputcsv($file, [$row['empleado_id'],$row['empleado'], $row['fecha'], $row['salida_almuerzo'], 'BREAK-OUT',  $row['tipo_contrato'], $row['biometrico']]);
                 }
                 if (!empty($row['entrada_almuerzo'])) {
-                    fputcsv($file, [$row['empleado_id'],$row['empleado'], $row['fecha'], $row['entrada'], 'BREAK-IN', '', '', '', $row['biometrico']]);
+                    fputcsv($file, [$row['empleado_id'],$row['empleado'], $row['fecha'], $row['entrada_almuerzo'], 'BREAK-IN', $row['tipo_contrato'], $row['biometrico']]);
                 }
                 if (!empty($row['salida'])) {
-                    fputcsv($file, [$row['empleado_id'],$row['empleado'], $row['fecha'], $row['entrada'], 'SALIDA', '', '', '', $row['biometrico']]);
+                    fputcsv($file, [$row['empleado_id'],$row['empleado'], $row['fecha'], $row['salida'], 'SALIDA', $row['tipo_contrato'], $row['biometrico']]);
                 }
             }
             fclose($file);

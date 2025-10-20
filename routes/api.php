@@ -13,3 +13,8 @@ Route::get('marcaciones', [MarcacionController::class, 'index']);
 Route::get('marcaciones/{empleado}/{fecha}', [MarcacionController::class, 'show']);
 
 Route::get('marcaciones/export', [MarcacionController::class, 'export']);
+
+
+Route::options('/{any}', function () {
+    return response()->json([], 200);
+})->where('any', '.*');
